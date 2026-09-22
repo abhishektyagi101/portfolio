@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work — Abhishek Tyagi</title>
+<meta name="description" content="Case studies: production RAG over engineering documentation, real-time anomaly detection for gas turbines, and an LLMOps practice built from scratch.">
+<link rel="canonical" href="SITE_URL/work.html">
+<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap bar">
+    <a class="brand" href="/">abhishek<span>.</span>tyagi</a>
+    <nav class="site">
+      <a href="/">Home</a>
+      <a href="/work.html" aria-current="page">Work</a>
+      <a href="/writing.html">Writing</a>
+      <a href="/looking-for.html">Hiring me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="wrap hero" style="padding-bottom:1rem">
+  <p class="eyebrow">Work</p>
+  <h1>What I have actually built</h1>
+  <p class="lede">
+    Three systems, described at the level of problem and architecture. Client names, site names, contract
+    values and internal metrics are deliberately absent — these are patterns and problem classes, not
+    employer specifics.
+  </p>
+</section>
+
+<section class="wrap">
+
+<h2 id="rag">Production RAG over engineering documentation</h2>
+<p class="muted small">Siemens Energy · 2023 – present · Architect and technical lead</p>
+
+<h3>The problem</h3>
+<p>
+  A service engineer standing next to a compressor needs a torque specification, a clearance tolerance or a
+  commissioning step. That number exists — in one of tens of thousands of PDFs, some typeset, some scanned
+  from the 1980s, spread across document management systems with inconsistent metadata. Finding it took
+  20 to 30 minutes of manual searching, and the engineer often gave up and called someone instead.
+</p>
+
+<h3>What I built</h3>
+<p>
+  A retrieval-augmented service over technical documentation and industrial sensor data. Documents are
+  parsed with structure preserved, chunked in a way that keeps tables and section hierarchy intact, embedded
+  and indexed for hybrid retrieval. A Model Context Protocol layer lets the model call tools that query
+  live sensor history, so an answer can combine "what the manual says" with "what this machine is doing".
+</p>
+
+<pre><code>ingest → structure-aware parse → chunk (tables + headings preserved)
+       → embed → hybrid index (BM25 + vector)
+                    ↓
+query → retrieve → re-rank → ground → generate → citation check → answer
+                                          ↑
+                              MCP tools: sensor history, asset metadata</code></pre>
+
+<h3>Engineering decisions that mattered</h3>
+<ul>
+  <li><strong>Refusal over fluency.</strong> A guardrail layer suppresses any answer that cannot be traced to a
+    source document. The system says "I could not find this" rather than approximating. Engineers trust it
+    more because of that, not less.</li>
+  <li><strong>Citations are mandatory, not decorative.</strong> Every response returns the document and section it
+    came from, so the answer is verifiable in ten seconds.</li>
+  <li><strong>Hybrid retrieval.</strong> Pure vector search fails on part numbers and equipment codes. Lexical
+    matching fails on paraphrased questions. Both, fused, works.</li>
+  <li><strong>Cost routing.</strong> Simple lookups go to a smaller model; only genuinely hard synthesis reaches the
+    frontier model. Response caching handles the long tail of repeated questions.</li>
+</ul>
+
+<h3>Outcome</h3>
+<p>
+  Used daily by engineering and service teams at three international sites. Lookups that took 20–30 minutes
+  return in under a minute. Average cost per request fell roughly 35% after the caching, batching and
+  routing work.
+</p>
+<ul class="tags"><li>Azure OpenAI</li><li>GPT-4</li><li>LangChain</li><li>Model Context Protocol</li><li>AWS OpenSearch</li><li>Python</li><li>FastAPI</li><li>Docker</li></ul>
+
+<hr>
+
+<h2 id="anomaly">Real-time anomaly detection for gas turbines</h2>
+<p class="muted small">Siemens Energy · 2022 – present · Architect and technical lead</p>
+
+<h3>The problem</h3>
+<p>
+  Condition monitoring was a human process: analysts reviewed trend plots on a schedule and flagged what
+  looked wrong. That scales badly, misses slow drift between reviews, and depends entirely on who happens to
+  be looking.
+</p>
+
+<h3>What I built</h3>
+<p>
+  An event-driven pipeline on AWS. Sensor batches land, a Step Functions workflow orchestrates validation,
+  feature construction and scoring against SageMaker endpoints, and anomalies fan out through SNS and SQS to
+  the people who can act on them. Everything is asynchronous, so a slow model never blocks ingestion.
+</p>
+
+<pre><code>sensor batch → S3 → EventBridge rule → Step Functions
+                                          ├─ validate &amp; align timestamps
+                                          ├─ build features (rolling stats, residuals)
+                                          ├─ SageMaker endpoint → score
+                                          └─ threshold + hysteresis → SNS/SQS → alert</code></pre>
+
+<h3>Engineering decisions that mattered</h3>
+<ul>
+  <li><strong>Residual modelling, not raw thresholds.</strong> Models (SVR, XGBoost, stacked ensembles) predict what a
+    healthy machine should be doing given operating conditions; the residual between predicted and actual is
+    what gets scored. That separates "this machine is degrading" from "this machine is working harder today".</li>
+  <li><strong>Hysteresis and dwell time.</strong> The first version alerted on every threshold crossing and produced
+    noise. Requiring an anomaly to persist before it escalates was the difference between a system people
+    used and one they muted.</li>
+  <li><strong>Alerts route to owners, not to a mailing list.</strong> Ownership metadata sits in the routing layer.</li>
+</ul>
+
+<h3>Outcome</h3>
+<p>
+  Replaced manual condition-monitoring rounds and surfaces developing faults days earlier than the review
+  cadence allowed.
+</p>
+<ul class="tags"><li>AWS Step Functions</li><li>EventBridge</li><li>Lambda</li><li>SageMaker</li><li>XGBoost</li><li>SVR</li><li>Time-series</li><li>CloudWatch</li></ul>
+
+<hr>
+
+<h2 id="llmops">An LLMOps practice, built from nothing</h2>
+<p class="muted small">Siemens Energy · 2023 – present · Owner</p>
+
+<h3>The problem</h3>
+<p>
+  The first generative AI prototype shipped without any of the machinery that makes a system maintainable.
+  Prompts lived in source files and changed without review. Nobody could answer "is this release better or
+  worse than the last one?" except by opinion. Cost was a monthly surprise.
+</p>
+
+<h3>What I built</h3>
+<table>
+  <tr><th>Concern</th><th>What exists now</th></tr>
+  <tr><td>Versioning</td><td>Prompts and models are versioned artefacts. A response can be traced back to the exact prompt and model that produced it.</td></tr>
+  <tr><td>Tracking</td><td>MLflow for experiments, parameters and a registry of promoted model versions.</td></tr>
+  <tr><td>Release gate</td><td>A golden evaluation set runs on every release. Groundedness and citation-accuracy regressions block the pipeline.</td></tr>
+  <tr><td>Human review</td><td>Sampled production answers get reviewed by domain engineers; disagreements feed back into the golden set.</td></tr>
+  <tr><td>Monitoring</td><td>Drift, latency and cost per request on a dashboard, with CloudWatch alerting into on-call when p95 latency regresses.</td></tr>
+  <tr><td>Governance</td><td>Role-based access control, secrets in AWS, EU data residency, and audit trails covering who asked what and which documents the answer read.</td></tr>
+</table>
+
+<h3>Outcome</h3>
+<p>
+  Ungrounded answers fell roughly 40% across three release cycles — not from a better model, but from
+  measuring the right thing and refusing to ship regressions.
+</p>
+<ul class="tags"><li>MLflow</li><li>GitLab CI/CD</li><li>SonarQube</li><li>Prometheus</li><li>Grafana</li><li>Evaluation harness</li><li>RBAC</li></ul>
+
+<hr>
+
+<h2>Before this</h2>
+
+<div class="timeline">
+  <div class="item">
+    <div class="role">Senior Software Engineer (Technical Lead)</div>
+    <div class="org">BlackBox IP Corporation, Noida</div>
+    <div class="when">Feb 2020 – Feb 2022</div>
+    <p class="small muted">
+      Led engineering for a patent analytics platform. Wrote the NLP pipelines that cleaned, normalised and
+      classified several hundred thousand documents, and replaced a manual analyst review step with text
+      classification — per-document handling fell from minutes to seconds.
+    </p>
+  </div>
+  <div class="item">
+    <div class="role">Associate Consultant</div>
+    <div class="org">Capgemini, Noida</div>
+    <div class="when">Oct 2017 – Feb 2020</div>
+    <p class="small muted">
+      Trained and deployed ML models on AWS for data-security use cases, and owned the ingestion side:
+      large-scale scraping, text extraction and cleaning pipelines feeding model training.
+    </p>
+  </div>
+  <div class="item">
+    <div class="role">Associate</div>
+    <div class="org">Wipro, Noida</div>
+    <div class="when">Sep 2015 – Jul 2017</div>
+    <p class="small muted">
+      Automated network and operating-system diagnostics in Python, then mined the telemetry for recurring
+      failure patterns so fixes went in permanently rather than as repeated workarounds.
+    </p>
+  </div>
+</div>
+
+<h2>Education &amp; training</h2>
+<ul>
+  <li><strong>B.Tech, Electronics and Communication Engineering</strong> — Hindustan College of Science and Technology, Mathura (GBTU/AKTU), 2009–2012</li>
+  <li><strong>Diploma in Electronics Engineering</strong> (3-year, full-time) — Government Polytechnic Saharanpur, 2006–2009</li>
+  <li><strong>Industrial Compressor Design and Predictive Maintenance</strong> — Siemens Energy Global Training Centre, Duisburg, Germany</li>
+  <li><strong>Master Program in Artificial Intelligence Engineer</strong> — Simplilearn</li>
+  <li><strong>TensorFlow Developer</strong> — IBM / Simplilearn</li>
+</ul>
+
+<div class="actions" style="margin-top:2rem">
+  <a class="btn primary" href="/assets/Abhishek_Tyagi_Resume.pdf">Download full CV (PDF)</a>
+  <a class="btn" href="/looking-for.html">What I am looking for</a>
+</div>
+
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap row">
+    <div>&copy; <span id="yr">2026</span> Abhishek Tyagi</div>
+    <div>
+      <a href="/work.html">Work</a>
+      <a href="/writing.html">Writing</a>
+      <a href="/looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </div>
+  </div>
+</footer>
+
+<script src="/assets/js/main.js" defer></script>
+</body>
+</html>
