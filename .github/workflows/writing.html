@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing — Abhishek Tyagi</title>
+<meta name="description" content="Essays on retrieval-augmented generation over engineering documentation, LLM evaluation in safety-critical settings, and anomaly detection for rotating equipment.">
+<link rel="canonical" href="https://abhishektyagi101.github.io/portfolio/writing.html">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" href="assets/img/angular.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="toolbar">
+  <div class="wrap bar">
+    <a class="brand" href="index.html">
+      <img class="ng-shield" src="assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="index.html">Home</a>
+      <a href="work.html">Work</a>
+      <a href="writing.html" aria-current="page">Writing</a>
+      <a href="looking-for.html">Hiring me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="hero-shell">
+  <section class="wrap hero" style="padding-bottom:2rem">
+    <p class="eyebrow">Writing</p>
+    <h1>Notes from production</h1>
+    <p class="lede">
+      Generative AI applied to industrial assets. Written for engineers who have to make this work, not for a
+      feed. Everything here is about problem classes and architecture — never about a specific employer,
+      customer or site.
+    </p>
+  </section>
+</div>
+
+<section class="wrap">
+  <ul class="post-list">
+    <li>
+      <a href="blog/why-rag-breaks-on-engineering-documentation.html">
+        <span class="t">Why RAG breaks on engineering documentation — and five fixes</span>
+        <span class="d">Industrial RAG projects almost never fail at the model layer. They fail at the document layer, and the failure is usually visible in the first week if you know where to look.</span>
+        <span class="m">2026 · 14 min read</span>
+      </a>
+    </li>
+    <li>
+      <a href="blog/chunking-strategies-for-technical-documents.html">
+        <span class="t">Chunking strategies for P&amp;IDs, datasheets and scanned manuals</span>
+        <span class="d">Recursive character splitting is the default in every tutorial and it destroys exactly the information an engineer came for. Four strategies that survive real technical documents.</span>
+        <span class="m">2026 · 11 min read</span>
+      </a>
+    </li>
+    <li>
+      <a href="blog/evaluating-llm-answers-when-being-wrong-has-physical-consequences.html">
+        <span class="t">Evaluating LLM answers when being wrong has physical consequences</span>
+        <span class="d">Helpfulness and preference scores are the wrong metric when the answer is a torque value. What a golden set looks like, and what we gate releases on instead.</span>
+        <span class="m">2026 · 12 min read</span>
+      </a>
+    </li>
+    <li>
+      <a href="blog/event-driven-anomaly-detection-on-aws.html">
+        <span class="t">Event-driven anomaly detection on AWS for rotating equipment</span>
+        <span class="d">The architecture, why residual modelling beats raw thresholds, and the alert-fatigue problem that nearly killed the first version.</span>
+        <span class="m">2026 · 13 min read</span>
+      </a>
+    </li>
+  </ul>
+</section>
+
+<section class="wrap">
+  <h2>Coming next</h2>
+  <p class="muted small">
+    Model Context Protocol for industrial data · Sensor time-series plus LLMs, hybrid architectures that work ·
+    The MLOps stack for regulated environments · Why your industrial AI pilot never reached production ·
+    Cost engineering for LLM systems at enterprise scale · Leading distributed AI teams across three time zones
+  </p>
+  <p style="margin-top:1.4rem">
+    New pieces roughly monthly. <a href="mailto:abhishektyagi101@gmail.com?subject=Notify%20me%20about%20new%20writing">Email me</a>
+    if you want to hear when one lands.
+  </p>
+</section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
+    </div>
+    <nav class="foot-nav">
+      <a href="work.html">Work</a>
+      <a href="writing.html">Writing</a>
+      <a href="looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
+    <p class="foot-note">Static site, hand-written HTML and CSS in an Angular Material style. Hosted on GitHub Pages.</p>
+  </div>
+</footer>
+
+<script src="assets/js/main.js" defer></script>
+</body>
+</html>
