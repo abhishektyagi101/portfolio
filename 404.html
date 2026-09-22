@@ -3,40 +3,62 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- GitHub Pages serves this file for any unknown path at any depth, so it needs an
+     explicit base. Change this one line if the repository name ever changes.
+     Use <base href="/"> when the site is served from a domain root. -->
+<base href="/portfolio/">
 <title>Not found — Abhishek Tyagi</title>
 <meta name="robots" content="noindex">
-<link rel="stylesheet" href="/assets/css/style.css">
-<link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" href="assets/img/angular.svg" type="image/svg+xml">
 </head>
 <body>
-<header class="site">
+<header class="toolbar">
   <div class="wrap bar">
-    <a class="brand" href="/">abhishek<span>.</span>tyagi</a>
-    <nav class="site">
-      <a href="/">Home</a>
-      <a href="/work.html">Work</a>
-      <a href="/writing.html">Writing</a>
-      <a href="/looking-for.html">Hiring me</a>
+    <a class="brand" href="index.html">
+      <img class="ng-shield" src="assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="index.html">Home</a>
+      <a href="work.html">Work</a>
+      <a href="writing.html">Writing</a>
+      <a href="looking-for.html">Hiring me</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap hero">
-  <p class="eyebrow">404</p>
-  <h1>That page does not exist.</h1>
-  <p class="lede">Retrieval failed, and rather than approximate an answer, this page is telling you so.</p>
-  <div class="actions">
-    <a class="btn primary" href="/">Back to home</a>
-    <a class="btn" href="/writing.html">Writing</a>
-  </div>
+<main id="main" class="hero-shell">
+  <section class="wrap hero">
+    <p class="eyebrow">404</p>
+    <h1>That page does not exist.</h1>
+    <p class="lede">Retrieval failed, and rather than approximate an answer, this page is telling you so.</p>
+    <div class="actions">
+      <a class="btn primary" href="index.html">Back to home</a>
+      <a class="btn" href="writing.html">Writing</a>
+    </div>
+  </section>
 </main>
 
-<footer class="site">
-  <div class="wrap row">
-    <div>&copy; <span id="yr">2026</span> Abhishek Tyagi</div>
-    <div><a href="mailto:abhishektyagi101@gmail.com">Email</a></div>
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
+    </div>
+    <nav class="foot-nav">
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
   </div>
 </footer>
-<script src="/assets/js/main.js" defer></script>
+
+<script src="assets/js/main.js" defer></script>
 </body>
 </html>

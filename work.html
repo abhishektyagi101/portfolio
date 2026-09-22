@@ -5,35 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Work — Abhishek Tyagi</title>
 <meta name="description" content="Case studies: production RAG over engineering documentation, real-time anomaly detection for gas turbines, and an LLMOps practice built from scratch.">
-<link rel="canonical" href="SITE_URL/work.html">
-<link rel="stylesheet" href="/assets/css/style.css">
-<link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://abhishektyagi101.github.io/portfolio/work.html">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" href="assets/img/angular.svg" type="image/svg+xml">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="site">
+<header class="toolbar">
   <div class="wrap bar">
-    <a class="brand" href="/">abhishek<span>.</span>tyagi</a>
-    <nav class="site">
-      <a href="/">Home</a>
-      <a href="/work.html" aria-current="page">Work</a>
-      <a href="/writing.html">Writing</a>
-      <a href="/looking-for.html">Hiring me</a>
+    <a class="brand" href="index.html">
+      <img class="ng-shield" src="assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="index.html">Home</a>
+      <a href="work.html" aria-current="page">Work</a>
+      <a href="writing.html">Writing</a>
+      <a href="looking-for.html">Hiring me</a>
     </nav>
   </div>
 </header>
 
 <main id="main">
-<section class="wrap hero" style="padding-bottom:1rem">
-  <p class="eyebrow">Work</p>
-  <h1>What I have actually built</h1>
-  <p class="lede">
-    Three systems, described at the level of problem and architecture. Client names, site names, contract
-    values and internal metrics are deliberately absent — these are patterns and problem classes, not
-    employer specifics.
-  </p>
-</section>
+
+<div class="hero-shell">
+  <section class="wrap hero" style="padding-bottom:2rem">
+    <p class="eyebrow">Work</p>
+    <h1>What I have actually built</h1>
+    <p class="lede">
+      Three systems, described at the level of problem and architecture. Client names, site names, contract
+      values and internal metrics are deliberately absent — these are patterns and problem classes, not
+      employer specifics.
+    </p>
+  </section>
+</div>
 
 <section class="wrap">
 
@@ -202,25 +215,29 @@ query → retrieve → re-rank → ground → generate → citation check → an
 </ul>
 
 <div class="actions" style="margin-top:2rem">
-  <a class="btn primary" href="/assets/Abhishek_Tyagi_Resume.pdf">Download full CV (PDF)</a>
-  <a class="btn" href="/looking-for.html">What I am looking for</a>
+  <a class="btn primary" href="assets/Abhishek_Tyagi_Resume.pdf">Download full CV (PDF)</a>
+  <a class="btn" href="looking-for.html">What I am looking for</a>
 </div>
 
 </section>
 </main>
 
-<footer class="site">
-  <div class="wrap row">
-    <div>&copy; <span id="yr">2026</span> Abhishek Tyagi</div>
-    <div>
-      <a href="/work.html">Work</a>
-      <a href="/writing.html">Writing</a>
-      <a href="/looking-for.html">Hiring me</a>
-      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
     </div>
+    <nav class="foot-nav">
+      <a href="work.html">Work</a>
+      <a href="writing.html">Writing</a>
+      <a href="looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
+    <p class="foot-note">Static site, hand-written HTML and CSS in an Angular Material style. Hosted on GitHub Pages.</p>
   </div>
 </footer>
 
-<script src="/assets/js/main.js" defer></script>
+<script src="assets/js/main.js" defer></script>
 </body>
 </html>
