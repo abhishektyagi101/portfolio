@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why RAG breaks on engineering documentation — and five fixes</title>
+<meta name="description" content="Industrial RAG projects fail at the document layer, not the model layer. Five concrete fixes: structure-aware parsing, hybrid retrieval, unit-aware normalisation, citation enforcement and refusal.">
+<link rel="canonical" href="https://abhishektyagi101.github.io/portfolio/blog/why-rag-breaks-on-engineering-documentation.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Why RAG breaks on engineering documentation — and five fixes">
+<meta property="og:description" content="Industrial RAG projects fail at the document layer, not the model layer.">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="icon" href="../assets/img/angular.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting",
+"headline":"Why RAG breaks on engineering documentation — and five fixes",
+"author":{"@type":"Person","name":"Abhishek Tyagi"},
+"datePublished":"2026-09-10","inLanguage":"en"}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="toolbar">
+  <div class="wrap bar">
+    <a class="brand" href="../index.html">
+      <img class="ng-shield" src="../assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="../index.html">Home</a>
+      <a href="../work.html">Work</a>
+      <a href="../writing.html" aria-current="page">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+<article class="post">
+  <p class="eyebrow">Retrieval</p>
+  <h1>Why RAG breaks on engineering documentation — and five fixes</h1>
+  <p class="post-meta">10 September 2026 · 14 min read</p>
+
+  <p class="lede">
+    Almost every industrial RAG project I have seen fails in the same place, and it is not the place people
+    expect. It is not the model. It is not the prompt. It is the document layer — and the failure is usually
+    visible in the first week if you know what to look for.
+  </p>
+
+  <p>
+    The demo works. Somebody drops fifty PDFs into a vector store over a weekend, asks three questions, gets
+    three good answers, and the project gets funded. Then the corpus grows to forty thousand documents, real
+    engineers start asking real questions, and the answers quietly become wrong in ways that are hard to
+    notice and expensive to trust.
+  </p>
+
+  <p>
+    Here is what is actually going on, and the five things that fixed it for us.
+  </p>
+
+  <h2>What makes engineering documentation different</h2>
+
+  <p>
+    General-purpose RAG is tuned for prose. Support articles, wiki pages, policy documents — text that flows
+    left to right, top to bottom, where meaning survives being flattened into a string. Engineering
+    documentation is not that. A typical industrial corpus contains:
+  </p>
+
+  <ul>
+    <li><strong>Tables where the structure is the meaning.</strong> A clearance tolerance table is a grid of values
+      indexed by frame size and operating condition. Flattened to text, the row and column headers detach
+      from the numbers and the entire thing becomes noise that looks like signal.</li>
+    <li><strong>Scanned documents from before digital typesetting.</strong> A 1987 manual is an image. Whatever OCR
+      gives you is what the model sees, including the places where it confidently misread a 6 as an 8.</li>
+    <li><strong>Units and tolerances that carry the answer.</strong> "0.15" means nothing. "0.15 mm ± 0.02" means
+      something. "0.15 in" means something dangerously different.</li>
+    <li><strong>Part numbers, equipment codes and revision identifiers</strong> that are lexically precise and
+      semantically meaningless. Embeddings are very bad at these.</li>
+    <li><strong>Multiple revisions of the same document</strong>, where the superseded version is often the one that
+      indexes better because it is longer and cleaner.</li>
+    <li><strong>Diagrams — P&amp;IDs, cross-sections, wiring schematics</strong> — where the information is spatial and
+      the surrounding text is a caption at best.</li>
+  </ul>
+
+  <p>
+    Every one of those breaks a default pipeline, and none of them show up in a fifty-document demo.
+  </p>
+
+  <div class="callout">
+    <p><strong>The diagnostic question.</strong> Ask your system something whose answer lives in a table, using a
+    part number, from a document that has three revisions. If it answers confidently and correctly, you have
+    a real system. If it answers confidently, you have a demo.</p>
+  </div>
+
+  <h2>Fix 1 — Parse for structure, not for text</h2>
+
+  <p>
+    The single highest-return change we made was to stop treating PDF ingestion as text extraction and start
+    treating it as structure extraction. Instead of a string per page, the parser emits a tree: sections with
+    their heading path, tables as tables, figures with their captions and page references.
+  </p>
+
+<pre><code>{
+  "doc_id": "manual-4471",
+  "revision": "C",
+  "path": ["Section 4", "4.3 Rotor Assembly", "4.3.2 Clearances"],
+  "type": "table",
+  "caption": "Table 4-7: Radial clearance by frame size",
+  "columns": ["Frame size", "Nominal (mm)", "Min (mm)", "Max (mm)"],
+  "rows": [
+    ["A-200", "0.15", "0.13", "0.17"],
+    ["A-300", "0.22", "0.19", "0.25"]
+  ],
+  "page": 87
+}</code></pre>
+
+  <p>
+    That object then gets serialised into a chunk that keeps the heading path and the column headers attached
+    to every row, so a retrieved fragment is self-describing. The model never sees a naked "0.15".
+  </p>
+
+  <p>
+    This is unglamorous work. Table detection on scanned pages is genuinely hard and no library solves it
+    completely. But the return is larger than anything you will get from swapping models.
+  </p>
+
+  <h2>Fix 2 — Hybrid retrieval, because embeddings cannot spell</h2>
+
+  <p>
+    Dense vector search is excellent at "what is the procedure for cold-start commissioning" and useless at
+    "what does fault code E-4471-B mean". Part numbers, error codes and equipment identifiers have almost no
+    semantic content — two codes differing by one character are neighbours in embedding space and completely
+    different in reality.
+  </p>
+
+  <p>
+    The fix is not exotic: run lexical retrieval alongside vector retrieval and fuse the results. Reciprocal
+    rank fusion is enough, and it is about fifteen lines of code.
+  </p>
+
+<pre><code>def reciprocal_rank_fusion(rankings, k=60):
+    """rankings: list of ranked doc_id lists, best first."""
+    scores = {}
+    for ranking in rankings:
+        for rank, doc_id in enumerate(ranking):
+            scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
+    return sorted(scores, key=scores.get, reverse=True)
+
+
+dense  = vector_index.search(query, top_k=50)
+sparse = bm25_index.search(query, top_k=50)
+candidates = reciprocal_rank_fusion([dense, sparse])[:20]
+final = cross_encoder.rerank(query, candidates)[:5]</code></pre>
+
+  <p>
+    Add a cross-encoder re-ranker over the fused candidate set. Retrieval quality improves more from
+    re-ranking twenty candidates than from doubling your embedding dimension.
+  </p>
+
+  <h2>Fix 3 — Normalise units at ingestion, not at generation</h2>
+
+  <p>
+    Do not ask the model to reason about units. It will, and it will occasionally be wrong, and you will not
+    notice because the answer looks right.
+  </p>
+
+  <p>
+    Instead, extract and normalise measurements during ingestion. Every numeric quantity becomes a structured
+    value with a magnitude, a unit and, where present, a tolerance. Store both the canonical SI form and the
+    original as written, and always render the original in the answer so it matches the document the engineer
+    will open to verify.
+  </p>
+
+<pre><code>"0.15 mm ± 0.02"  →  {
+    "raw": "0.15 mm ± 0.02",
+    "value": 0.15, "unit": "mm",
+    "tolerance": {"plus": 0.02, "minus": 0.02},
+    "si_value": 0.00015, "si_unit": "m"
+}</code></pre>
+
+  <p>
+    This also gives you something valuable for free: a validator. If a generated answer contains a numeric
+    quantity that does not appear in any retrieved chunk, that is a hallucination you can detect
+    mechanically, before the user sees it.
+  </p>
+
+  <h2>Fix 4 — Make revisions and metadata first-class</h2>
+
+  <p>
+    In a corpus with revision history, the naive system will happily quote a superseded document. Nothing in
+    the text says "this is out of date" — that information lives in metadata, and default pipelines discard
+    metadata at the moment they create the chunk.
+  </p>
+
+  <p>
+    Three rules that fixed this for us:
+  </p>
+
+  <ol>
+    <li>Every chunk carries document identity, revision, effective date and applicable equipment models as
+      structured filter fields, not as text.</li>
+    <li>Retrieval filters to the current revision by default. Superseded content is reachable only when the
+      user explicitly asks for history.</li>
+    <li>When the applicable equipment is known from context, filter on it. A question about an A-300 should
+      never retrieve an A-200-only table, no matter how well it matches.</li>
+  </ol>
+
+  <p>
+    Filtering before ranking is dramatically cheaper than trying to teach a re-ranker about revision
+    semantics, and it is auditable.
+  </p>
+
+  <h2>Fix 5 — Enforce citations, and let the system refuse</h2>
+
+  <p>
+    This is the change that had the biggest effect on adoption, and it is a product decision more than a
+    technical one.
+  </p>
+
+  <p>
+    Every answer must cite the document and section it came from. Not as a footnote for politeness — as a
+    hard requirement, checked after generation. If the answer contains a claim that cannot be traced to a
+    retrieved chunk, the answer does not ship. The system says it could not find the information.
+  </p>
+
+  <blockquote>
+    An assistant that says "I don't know" 15% of the time gets used. An assistant that is confidently wrong
+    2% of the time gets abandoned, because nobody can tell which 2%.
+  </blockquote>
+
+  <p>
+    Engineers are extremely good at detecting a system that bluffs, and exactly one bad experience is enough
+    to lose them. Refusal is not a degraded outcome. It is the feature that makes the rest of it usable.
+  </p>
+
+  <h2>What we measured</h2>
+
+  <p>
+    We built a golden set of a few hundred real questions with verified answers and source references, then
+    gated every release on it. The metrics that mattered:
+  </p>
+
+  <table>
+    <tr><th>Metric</th><th>What it asks</th></tr>
+    <tr><td>Retrieval recall@k</td><td>Is the correct source chunk in the candidate set at all? If not, nothing downstream can save you.</td></tr>
+    <tr><td>Groundedness</td><td>Is every claim in the answer supported by a retrieved chunk?</td></tr>
+    <tr><td>Citation accuracy</td><td>Does the cited section actually contain the claim, or is the citation decorative?</td></tr>
+    <tr><td>Numeric fidelity</td><td>Does every number in the answer appear, with its unit, in a retrieved chunk?</td></tr>
+    <tr><td>Appropriate refusal</td><td>When the answer is genuinely not in the corpus, does the system say so?</td></tr>
+  </table>
+
+  <p>
+    Note what is absent: no helpfulness score, no preference rating, no LLM-as-judge on overall quality. Those
+    are useful for chatbots. They are the wrong instrument when the output is a clearance tolerance.
+  </p>
+
+  <p>
+    Across three release cycles, ungrounded answers fell by roughly 40%. Not one percent of that came from a
+    better base model. It came from parsing, retrieval, filtering and refusal.
+  </p>
+
+  <h2>The order I would do it in again</h2>
+
+  <ol>
+    <li>Build the golden set first, before any pipeline work. You cannot improve what you cannot measure, and
+      building it forces you to talk to the engineers who will use the system.</li>
+    <li>Fix parsing and chunking. Biggest single lever, least interesting work.</li>
+    <li>Add hybrid retrieval and a re-ranker.</li>
+    <li>Add metadata filtering, especially revisions.</li>
+    <li>Add citation enforcement and refusal.</li>
+    <li>Only now consider a bigger model. You will usually find you do not need one.</li>
+  </ol>
+
+  <div class="callout">
+    <p><strong>The uncomfortable summary.</strong> Roughly 80% of the work in a production industrial RAG system is
+    document engineering, and roughly 5% is anything to do with the language model. The industry's attention
+    is allocated in almost exactly the inverse proportion.</p>
+  </div>
+
+  <hr>
+  <p class="small muted">
+    I build generative AI and ML systems for heavy industrial assets — turbines, compressors, rotating
+    equipment. Currently Lead AI/ML Engineer at Siemens Energy, relocating to Germany.
+    <a href="mailto:abhishektyagi101@gmail.com">abhishektyagi101@gmail.com</a>
+  </p>
+  <p><a href="../writing.html">← All writing</a></p>
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="../assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
+    </div>
+    <nav class="foot-nav">
+      <a href="../work.html">Work</a>
+      <a href="../writing.html">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
+    <p class="foot-note">Static site, hand-written HTML and CSS in an Angular Material style. Hosted on GitHub Pages.</p>
+  </div>
+</footer>
+<script src="../assets/js/main.js" defer></script>
+</body>
+</html>

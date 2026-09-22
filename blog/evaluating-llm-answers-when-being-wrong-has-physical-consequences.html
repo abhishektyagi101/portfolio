@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluating LLM answers when being wrong has physical consequences</title>
+<meta name="description" content="Helpfulness scores are the wrong metric when the answer is a torque value. How to build a golden set, what to gate releases on, and why refusal rate belongs on the dashboard.">
+<link rel="canonical" href="https://abhishektyagi101.github.io/portfolio/blog/evaluating-llm-answers-when-being-wrong-has-physical-consequences.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Evaluating LLM answers when being wrong has physical consequences">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="icon" href="../assets/img/angular.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting",
+"headline":"Evaluating LLM answers when being wrong has physical consequences",
+"author":{"@type":"Person","name":"Abhishek Tyagi"},
+"datePublished":"2026-09-10","inLanguage":"en"}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="toolbar">
+  <div class="wrap bar">
+    <a class="brand" href="../index.html">
+      <img class="ng-shield" src="../assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="../index.html">Home</a>
+      <a href="../work.html">Work</a>
+      <a href="../writing.html" aria-current="page">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+<article class="post">
+  <p class="eyebrow">Evaluation</p>
+  <h1>Evaluating LLM answers when being wrong has physical consequences</h1>
+  <p class="post-meta">10 September 2026 · 12 min read</p>
+
+  <p class="lede">
+    If your assistant recommends the wrong film, someone has a mediocre evening. If it recommends the wrong
+    torque value, someone loosens a bolt that was holding something in place. These two systems should not be
+    evaluated with the same metrics, and yet almost everybody uses the same metrics.
+  </p>
+
+  <p>
+    The standard evaluation toolkit — helpfulness ratings, pairwise preference, an LLM judge scoring
+    "overall quality" out of ten — was designed for open-ended assistants where the goal is a good
+    experience. In a maintenance or commissioning context the goal is different: the answer is either correct
+    and traceable, or it should not have been given.
+  </p>
+
+  <p>
+    This is what we replaced it with.
+  </p>
+
+  <h2>Start with the golden set, before you build anything</h2>
+
+  <p>
+    The first artefact in the project should be a set of real questions with verified answers and verified
+    source references. Not synthetic questions generated from your own documents — that measures whether your
+    retriever can find text it already produced. Real questions, collected from the people who will use the
+    system.
+  </p>
+
+  <p>
+    We collected ours from support tickets, from the questions engineers asked each other in chat, and from
+    sitting with service teams and writing down what they looked up. Every entry looks like this:
+  </p>
+
+<pre><code>{
+  "id": "gs-0142",
+  "question": "What is the radial clearance for an A-300 rotor at standard conditions?",
+  "expected_answer": "0.22 mm nominal, range 0.19–0.25 mm",
+  "expected_sources": ["manual-4471#4.3.2", "manual-4471#table-4-7"],
+  "answer_type": "numeric_with_tolerance",
+  "criticality": "high",
+  "must_not_contain": ["0.15"],
+  "asked_by": "field service",
+  "frequency": "weekly"
+}</code></pre>
+
+  <p>
+    Three fields there are doing unusual work. <code>criticality</code> lets you weight failures by consequence
+    rather than counting them equally. <code>must_not_contain</code> encodes the specific wrong answer you expect
+    the system to produce — usually the value from a neighbouring row or a superseded revision. And
+    <code>frequency</code> lets you weight by how often the question actually gets asked, so you optimise for
+    reality rather than for corpus coverage.
+  </p>
+
+  <p>
+    A few hundred entries is enough to gate a release. Ours grew over time from production disagreements,
+    which is the healthiest way for it to grow.
+  </p>
+
+  <h2>The metrics we actually gate on</h2>
+
+  <h3>Retrieval recall@k</h3>
+  <p>
+    Is the correct source in the candidate set at all? Measured against <code>expected_sources</code>. This is
+    the ceiling metric — if recall@20 is 0.7, then 30% of questions are unanswerable no matter what happens
+    downstream. Fix this before touching anything else.
+  </p>
+
+  <h3>Groundedness</h3>
+  <p>
+    Decompose the answer into atomic claims, and check each one against the retrieved context. Any claim not
+    supported by retrieved text is ungrounded. This is where an LLM judge is legitimately useful — not
+    scoring quality, but performing a narrow entailment check with the evidence in front of it.
+  </p>
+
+<pre><code>ENTAILMENT_PROMPT = """You are checking a single factual claim against source text.
+
+CLAIM: {claim}
+SOURCE: {chunk}
+
+Answer with exactly one word:
+SUPPORTED   - the source states this claim
+CONTRADICTED - the source states something incompatible
+NOT_FOUND   - the source does not address this claim
+"""</code></pre>
+
+  <p>
+    Keep the judge's job small and mechanical. A judge asked "is this a good answer?" produces noise; a judge
+    asked "does this sentence follow from this paragraph?" is reliable enough to gate on.
+  </p>
+
+  <h3>Numeric fidelity</h3>
+  <p>
+    A deterministic check, no model involved. Extract every numeric quantity with its unit from the answer.
+    Every one of them must appear in a retrieved chunk with a matching unit. This catches unit conversions
+    the model performed silently, digits transposed during generation, and values borrowed from an adjacent
+    table row.
+  </p>
+
+  <p>
+    It is the cheapest check in the suite and it catches the most dangerous class of error. If you implement
+    one thing from this post, implement this.
+  </p>
+
+  <h3>Citation accuracy</h3>
+  <p>
+    Does the cited section actually contain the claim? A citation that points at the wrong section is worse
+    than no citation, because it manufactures confidence and passes casual inspection.
+  </p>
+
+  <h3>Appropriate refusal</h3>
+  <p>
+    Deliberately include questions whose answers are <em>not</em> in the corpus. Roughly 10% of our golden set
+    is unanswerable by construction. The correct behaviour is refusal, and a release that starts answering
+    those questions has regressed, even if every other metric improved.
+  </p>
+
+  <div class="callout">
+    <p><strong>Refusal rate belongs on the dashboard, next to accuracy.</strong> If it drops, the system has become
+    more willing to guess. That is a regression, and no other metric will show it as one.</p>
+  </div>
+
+  <h2>What we deliberately do not measure</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Why it is excluded</th></tr>
+    <tr><td>Helpfulness / preference score</td><td>Rewards fluent confidence. The dangerous failure mode in this domain is a wrong answer that reads beautifully.</td></tr>
+    <tr><td>Answer length or completeness</td><td>The correct answer to "what is the torque spec" is a number and a source, not four paragraphs.</td></tr>
+    <tr><td>Semantic similarity to a reference</td><td>"0.15 mm" and "0.25 mm" are nearly identical in embedding space and describe different machines.</td></tr>
+    <tr><td>User thumbs-up rate alone</td><td>Users cannot detect errors in domains where they are consulting the system precisely because they do not know the answer.</td></tr>
+  </table>
+
+  <p>
+    That last one deserves emphasis. Thumbs-up data measures whether the answer felt satisfying, and in a
+    lookup system the user has no independent way to know if it was right. We collect it, we look at it as a
+    usability signal, and we never gate on it.
+  </p>
+
+  <h2>The release gate</h2>
+
+  <p>
+    Every change — prompt edit, model version, retrieval parameter, chunking change — runs the full golden set
+    in CI. The pipeline blocks on regression, not on absolute thresholds:
+  </p>
+
+<pre><code>gate:
+  recall_at_20:        {min: 0.92, max_regression: 0.01}
+  groundedness:        {min: 0.95, max_regression: 0.01}
+  numeric_fidelity:    {min: 0.99, max_regression: 0.00}   # zero tolerance
+  citation_accuracy:   {min: 0.93, max_regression: 0.02}
+  appropriate_refusal: {min: 0.90, max_regression: 0.02}
+  high_criticality_failures: {max: 0}</code></pre>
+
+  <p>
+    Absolute thresholds tell you whether the system is good enough to exist. Regression limits stop the slow
+    decay that happens when twenty small changes each cost half a percent and nobody is watching the
+    cumulative total. The zero-regression rule on numeric fidelity is the one nobody is allowed to override.
+  </p>
+
+  <h2>Human review, sampled and structured</h2>
+
+  <p>
+    Automated evaluation cannot tell you whether the answer was useful in context, so we sample production
+    answers weekly and have domain engineers review them. Two rules make this sustainable:
+  </p>
+
+  <ol>
+    <li><strong>Sample deliberately, not randomly.</strong> Weight toward high-criticality question types,
+      low-confidence retrievals and answers where the model nearly refused. Random sampling of a system that
+      is 95% correct wastes most of your reviewer's time confirming things that are fine.</li>
+    <li><strong>Every disagreement becomes a golden-set entry.</strong> This is the whole point. Human review that
+      does not feed back into automated evaluation is a report, not a process. Ours grew by roughly 30% in
+      the first year entirely from review findings.</li>
+  </ol>
+
+  <h2>What this bought us</h2>
+
+  <p>
+    Ungrounded answers fell by roughly 40% across three release cycles. The base model did not change. What
+    changed was that we could see regressions before users could, and that shipping something worse became
+    procedurally difficult rather than merely discouraged.
+  </p>
+
+  <p>
+    There is a second benefit that is harder to quantify and possibly more valuable. When a safety engineer
+    asks "how do you know this thing is right?", the answer is a document with numbers in it and a CI
+    pipeline that enforces them. That conversation is the difference between a pilot and a production system,
+    and no amount of demo quality substitutes for it.
+  </p>
+
+  <blockquote>
+    In safety-adjacent domains, evaluation is not quality assurance. It is the argument for why the system is
+    allowed to exist.
+  </blockquote>
+
+  <hr>
+  <p class="small muted">
+    I build generative AI and ML systems for heavy industrial assets. Currently Lead AI/ML Engineer at
+    Siemens Energy, relocating to Germany.
+    <a href="mailto:abhishektyagi101@gmail.com">abhishektyagi101@gmail.com</a>
+  </p>
+  <p><a href="../writing.html">← All writing</a></p>
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="../assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
+    </div>
+    <nav class="foot-nav">
+      <a href="../work.html">Work</a>
+      <a href="../writing.html">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
+    <p class="foot-note">Static site, hand-written HTML and CSS in an Angular Material style. Hosted on GitHub Pages.</p>
+  </div>
+</footer>
+<script src="../assets/js/main.js" defer></script>
+</body>
+</html>

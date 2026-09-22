@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chunking strategies for P&amp;IDs, datasheets and scanned manuals</title>
+<meta name="description" content="Recursive character splitting destroys the structure engineers need. Four chunking strategies for technical documents: heading-path, table-atomic, figure-caption binding and overlap by section.">
+<link rel="canonical" href="https://abhishektyagi101.github.io/portfolio/blog/chunking-strategies-for-technical-documents.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Chunking strategies for P&amp;IDs, datasheets and scanned manuals">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="icon" href="../assets/img/angular.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting",
+"headline":"Chunking strategies for P&IDs, datasheets and scanned manuals",
+"author":{"@type":"Person","name":"Abhishek Tyagi"},
+"datePublished":"2026-09-10","inLanguage":"en"}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="toolbar">
+  <div class="wrap bar">
+    <a class="brand" href="../index.html">
+      <img class="ng-shield" src="../assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="../index.html">Home</a>
+      <a href="../work.html">Work</a>
+      <a href="../writing.html" aria-current="page">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+<article class="post">
+  <p class="eyebrow">Retrieval</p>
+  <h1>Chunking strategies for P&amp;IDs, datasheets and scanned manuals</h1>
+  <p class="post-meta">10 September 2026 · 11 min read</p>
+
+  <p class="lede">
+    Every RAG tutorial starts with a recursive character splitter at 1000 tokens with 200 overlap. On
+    technical documentation, that single default destroys more information than any other decision in the
+    pipeline.
+  </p>
+
+  <p>
+    The reason is simple. A character splitter optimises for chunk size. Technical documents encode meaning
+    in structure — hierarchy, tables, figure references, units. Size and structure are unrelated, so
+    optimising one shreds the other. A tolerance table split across two chunks is not two half-useful chunks.
+    It is two useless chunks, one of which will retrieve well and mislead.
+  </p>
+
+  <p>
+    Here are four strategies that work instead, roughly in order of how much they will improve your system.
+  </p>
+
+  <h2>1. Heading-path chunking</h2>
+
+  <p>
+    Chunk on document structure, and make every chunk carry its full heading path as a prefix. The path is
+    cheap in tokens and enormously informative — both for the embedding and for the human reading the
+    citation.
+  </p>
+
+<pre><code># Bad — a naked fragment
+"...maximum permissible value is 0.22 mm for standard operating
+conditions. Refer to Table 4-7 for other frame sizes."
+
+# Good — same fragment, self-describing
+"Manual 4471 Rev C &gt; Section 4: Rotor Assembly &gt; 4.3 Clearances
+ &gt; 4.3.2 Radial Clearance
+
+...maximum permissible value is 0.22 mm for standard operating
+conditions. Refer to Table 4-7 for other frame sizes."</code></pre>
+
+  <p>
+    The retrieval improvement comes from context that the fragment alone does not carry. "Maximum permissible
+    value" matches a hundred passages; "radial clearance, rotor assembly, maximum permissible value" matches
+    one.
+  </p>
+
+  <p>
+    Implementation note: build the heading path during parsing, from the document outline or from font-size
+    and numbering heuristics on unstructured PDFs. Do not try to recover it later — the information is gone
+    once you have a flat string.
+  </p>
+
+  <h2>2. Table-atomic chunking</h2>
+
+  <p>
+    Never split a table. Treat it as an indivisible unit regardless of size, and if it genuinely exceeds your
+    context budget, split by rows while repeating the header on every fragment.
+  </p>
+
+  <p>
+    Then serialise it in a form that survives embedding. Markdown pipe tables work reasonably well.
+    Row-oriented natural language works better for retrieval, at the cost of tokens:
+  </p>
+
+<pre><code># Markdown form — compact, good for the model to read
+| Frame size | Nominal (mm) | Min (mm) | Max (mm) |
+|------------|--------------|----------|----------|
+| A-200      | 0.15         | 0.13     | 0.17     |
+| A-300      | 0.22         | 0.19     | 0.25     |
+
+# Row-expanded form — verbose, much better for retrieval
+"Table 4-7 Radial clearance by frame size. For frame size A-200:
+ nominal 0.15 mm, minimum 0.13 mm, maximum 0.17 mm."
+"Table 4-7 Radial clearance by frame size. For frame size A-300:
+ nominal 0.22 mm, minimum 0.19 mm, maximum 0.25 mm."</code></pre>
+
+  <p>
+    We index the row-expanded form and pass the markdown form to the model. Retrieval hits the specific row;
+    generation sees the whole table and can reason across it. The duplication costs storage, which is the
+    cheapest resource in the system.
+  </p>
+
+  <h2>3. Figure-caption binding</h2>
+
+  <p>
+    A P&amp;ID or a cross-section diagram carries information that no text pipeline will extract. What you
+    can do is make sure the surrounding text knows the figure exists and can point an engineer at it.
+  </p>
+
+  <p>
+    Bind every figure to a chunk containing its caption, its number, the page, and the paragraphs that
+    reference it anywhere in the document. Cross-references are usually recoverable with a regex over
+    "Figure 4-2", "Fig. 4-2", "see 4-2".
+  </p>
+
+<pre><code>{
+  "type": "figure",
+  "id": "fig-4-2",
+  "caption": "Figure 4-2: Rotor assembly cross-section, A-series",
+  "page": 84,
+  "referenced_by": [
+    "4.3.1: The bearing housing (Figure 4-2, item 7) must be...",
+    "4.5.2: During reassembly, verify orientation per Figure 4-2."
+  ],
+  "asset_ref": "s3://.../manual-4471/p084-fig02.png"
+}</code></pre>
+
+  <p>
+    The answer then becomes: "The bearing housing is item 7 — see Figure 4-2 on page 84 of Manual 4471 Rev
+    C", with a link to the image. That is genuinely useful, and it is honest about the limits of the system.
+    If you have vision-model budget, caption generation on the figure itself adds another retrieval surface,
+    but the binding is what does most of the work.
+  </p>
+
+  <h2>4. Overlap by section, not by character</h2>
+
+  <p>
+    Character overlap exists to stop a sentence being cut in half. On structured documents you do not need
+    it, because you are not cutting mid-sentence any more. What you need instead is <em>semantic</em>
+    overlap: a chunk should carry a short summary of its parent section.
+  </p>
+
+<pre><code>chunk_text = (
+    f"{heading_path}\n"
+    f"[Section context: {parent_section_summary}]\n\n"
+    f"{body}"
+)</code></pre>
+
+  <p>
+    Generate the parent summary once per section at ingestion — one cheap model call per section, not per
+    chunk. It resolves the pronoun problem ("it must be replaced" — what must?) far more reliably than 200
+    characters of arbitrary overlap.
+  </p>
+
+  <h2>Handling scanned documents</h2>
+
+  <p>
+    Scanned manuals deserve their own treatment because everything above assumes you have structure to work
+    with, and OCR output frequently has none.
+  </p>
+
+  <ul>
+    <li><strong>Keep a confidence score per block</strong> and store it on the chunk. Low-confidence regions should be
+      retrievable but flagged, and any numeric value extracted from a low-confidence region should be
+      excluded from the numeric-fidelity check rather than silently trusted.</li>
+    <li><strong>Never auto-correct numbers.</strong> A spellchecker that fixes "recieve" is fine. One that "fixes" a
+      part number is a defect generator.</li>
+    <li><strong>Use layout-aware OCR</strong> that emits bounding boxes, then reconstruct reading order and table grids
+      geometrically. Column-major reading order on a two-column scan is a common and completely silent
+      corruption.</li>
+    <li><strong>Prefer a re-scan over heroic parsing.</strong> If a document matters and the scan is bad, the cheapest
+      fix is often to get a better source file, not to write more code.</li>
+  </ul>
+
+  <div class="callout">
+    <p><strong>A test that catches most chunking bugs.</strong> Take twenty chunks at random and read them cold, with
+    no other context. If you cannot tell what equipment, which section and which revision each one is about,
+    neither can the retriever, and neither can the model.</p>
+  </div>
+
+  <h2>What this costs</h2>
+
+  <p>
+    Honestly: a lot more engineering than a character splitter, and a bigger index. Structure-aware parsing
+    of a heterogeneous corpus is weeks of work, and the row-expanded table representation roughly doubles
+    storage for tabular documents.
+  </p>
+
+  <p>
+    It is still the highest-return work available. Retrieval sets a ceiling on the entire system — if the
+    right chunk is not in the candidate set, no model, no prompt and no amount of re-ranking will produce a
+    correct answer. Everything downstream is optimisation under that ceiling.
+  </p>
+
+  <hr>
+  <p class="small muted">
+    I build generative AI and ML systems for heavy industrial assets. Currently Lead AI/ML Engineer at
+    Siemens Energy, relocating to Germany.
+    <a href="mailto:abhishektyagi101@gmail.com">abhishektyagi101@gmail.com</a>
+  </p>
+  <p><a href="../writing.html">← All writing</a></p>
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="../assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
+    </div>
+    <nav class="foot-nav">
+      <a href="../work.html">Work</a>
+      <a href="../writing.html">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
+    <p class="foot-note">Static site, hand-written HTML and CSS in an Angular Material style. Hosted on GitHub Pages.</p>
+  </div>
+</footer>
+<script src="../assets/js/main.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event-driven anomaly detection on AWS for rotating equipment</title>
+<meta name="description" content="Step Functions, EventBridge and SageMaker for condition monitoring. Why residual modelling beats raw thresholds, and how alert fatigue nearly killed the first version.">
+<link rel="canonical" href="https://abhishektyagi101.github.io/portfolio/blog/event-driven-anomaly-detection-on-aws.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Event-driven anomaly detection on AWS for rotating equipment">
+<meta name="theme-color" content="#dd0031">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400&family=Roboto:wght@300;400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="icon" href="../assets/img/angular.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting",
+"headline":"Event-driven anomaly detection on AWS for rotating equipment",
+"author":{"@type":"Person","name":"Abhishek Tyagi"},
+"datePublished":"2026-09-10","inLanguage":"en"}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="toolbar">
+  <div class="wrap bar">
+    <a class="brand" href="../index.html">
+      <img class="ng-shield" src="../assets/img/angular.svg" alt="" width="30" height="30">
+      <span>abhishek<span class="accent">.</span>tyagi</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="site-nav">
+      <a href="../index.html">Home</a>
+      <a href="../work.html">Work</a>
+      <a href="../writing.html" aria-current="page">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+<article class="post">
+  <p class="eyebrow">Architecture</p>
+  <h1>Event-driven anomaly detection on AWS for rotating equipment</h1>
+  <p class="post-meta">10 September 2026 · 13 min read</p>
+
+  <p class="lede">
+    Condition monitoring for turbines and compressors is usually a human process on a schedule: an analyst
+    opens trend plots, looks for something wrong, and moves on. That misses slow drift between reviews and
+    scales linearly with headcount. This is the architecture we replaced it with, including the mistake that
+    nearly killed it.
+  </p>
+
+  <h2>The shape of the problem</h2>
+
+  <p>
+    Rotating equipment produces continuous multivariate telemetry — vibration, temperatures, pressures, flow,
+    speed, load. The signals are correlated, non-stationary, and heavily dependent on operating condition. A
+    bearing temperature of 95°C is normal at full load on a summer afternoon and alarming at part load in
+    February.
+  </p>
+
+  <p>
+    That single fact is why static thresholds fail. Set them tight and you drown in false alarms whenever the
+    machine works hard. Set them loose and you only catch faults that were already obvious.
+  </p>
+
+  <h2>The architecture</h2>
+
+<pre><code>  sensor batch ──► S3 (raw)
+                     │
+                     ▼
+              EventBridge rule
+                     │
+                     ▼
+          ┌──── Step Functions ────────────────────┐
+          │                                        │
+          │  1. validate    (schema, gaps, ranges) │
+          │  2. align       (resample, timezone)   │
+          │  3. features    (rolling stats,        │
+          │                  lags, load context)   │
+          │  4. score       (SageMaker endpoint)   │
+          │  5. residual    (predicted vs actual)  │
+          │  6. persist     (S3 curated + metrics) │
+          │  7. decide      (threshold + dwell)    │
+          └────────────────┬───────────────────────┘
+                           │ anomaly
+                           ▼
+                       SNS topic
+                     ┌─────┴─────┐
+                     ▼           ▼
+                SQS queue    notification
+                     │        (owner only)
+                     ▼
+              downstream systems</code></pre>
+
+  <p>
+    Everything is asynchronous and every step is idempotent. A slow model never blocks ingestion, a failed
+    step retries without duplicating alerts, and replaying a day of history is the same code path as
+    real-time.
+  </p>
+
+  <h3>Why Step Functions rather than one big Lambda</h3>
+
+  <p>
+    Three reasons, all operational rather than aesthetic.
+  </p>
+
+  <ul>
+    <li><strong>Visible failure.</strong> When something breaks at 03:00, the console shows which step failed and with
+      what input. Reconstructing that from logs inside a monolithic function is materially slower.</li>
+    <li><strong>Per-step retry policy.</strong> Feature computation can retry immediately. A SageMaker endpoint
+      returning 429 needs exponential backoff. A validation failure should not retry at all — it should route
+      to a dead-letter path and page someone about the data source.</li>
+    <li><strong>Step-level timeouts.</strong> The 15-minute Lambda ceiling is a real constraint on backfills, and
+      splitting the work lets each step have a budget appropriate to what it does.</li>
+  </ul>
+
+  <h2>Residual modelling, not raw thresholds</h2>
+
+  <p>
+    This is the core modelling decision. Rather than asking "is this value abnormal", we ask "is this value
+    abnormal <em>given what the machine is being asked to do</em>".
+  </p>
+
+  <p>
+    A model learns the expected value of each target signal from operating context — load, speed, ambient
+    conditions, upstream measurements. The anomaly score is computed on the residual between prediction and
+    reality, normalised by the model's typical error.
+  </p>
+
+<pre><code># Conceptually:
+predicted = model.predict(operating_context)   # what a healthy unit would do
+residual  = actual - predicted
+score     = abs(residual) / rolling_std(residual, window="30d")
+
+# score is roughly "how many typical errors away is this"</code></pre>
+
+  <p>
+    The effect is that hot summer afternoons stop generating alarms, because the model already expects the
+    temperature to be high. What survives is genuine deviation: the machine behaving differently from how it
+    behaved under the same conditions last month.
+  </p>
+
+  <h3>Model choices</h3>
+
+  <table>
+    <tr><th>Approach</th><th>Where it earned its place</th></tr>
+    <tr><td>Support Vector Regression</td><td>Smooth, well-behaved signals with strong physical relationships. Stable, few parameters, and its errors are interpretable.</td></tr>
+    <tr><td>Gradient boosting (XGBoost)</td><td>Signals with regime changes and interaction effects. Feature importances survive contact with domain experts, which matters for trust.</td></tr>
+    <tr><td>Stacked ensemble</td><td>Where individual models disagree in useful ways. Disagreement between base models is itself a signal worth surfacing.</td></tr>
+  </table>
+
+  <p>
+    Notably absent: deep sequence models. We tried them. On this data, with this volume, the accuracy gain did
+    not justify the operational cost or the loss of interpretability. When a reliability engineer asks why the
+    system flagged a machine, "bearing 3 temperature is running 4σ above what load and ambient predict" is an
+    answer they can act on. An attention map is not.
+  </p>
+
+  <h3>Features that mattered</h3>
+
+  <ul>
+    <li>Rolling statistics over multiple horizons — 1 h, 24 h, 7 d. Fault signatures live at different time scales.</li>
+    <li>Rate of change, not just level. Slow drift is the entire point.</li>
+    <li>Explicit operating-regime flags: startup, shutdown, steady state, load transition. Model behaviour during transients is a different problem and mostly should be excluded.</li>
+    <li>Cross-signal ratios that encode physics — pressure ratios, temperature differentials, efficiency proxies.</li>
+    <li>Time since last maintenance event. Machines behave differently after an overhaul, and pretending otherwise generates a fortnight of false alarms every service.</li>
+  </ul>
+
+  <h2>The mistake: alert fatigue</h2>
+
+  <p>
+    The first version alerted on every threshold crossing. It was technically correct and operationally
+    useless. Within two weeks the notifications were being filtered into a folder nobody opened, which is
+    exactly the same outcome as having built nothing.
+  </p>
+
+  <p>
+    Three changes fixed it.
+  </p>
+
+  <h3>Dwell time</h3>
+  <p>
+    An anomaly must persist for a minimum duration before it escalates. A single sample above threshold is
+    noise; a condition sustained for an hour is a condition.
+  </p>
+
+  <h3>Hysteresis</h3>
+  <p>
+    Separate thresholds for entering and leaving the anomalous state. Without this, a signal oscillating
+    around the boundary generates an alert storm.
+  </p>
+
+<pre><code>ENTER = 3.5   # sigma
+EXIT  = 2.5   # sigma
+DWELL = timedelta(hours=1)
+
+if not state.active and score > ENTER:
+    if state.above_since and now - state.above_since >= DWELL:
+        state.active = True
+        emit_alert()
+elif state.active and score < EXIT:
+    state.active = False
+    emit_clear()</code></pre>
+
+  <h3>Routing by ownership</h3>
+  <p>
+    Alerts go to the person responsible for that asset, not to a distribution list. Ownership metadata sits
+    in the routing layer and is maintained as part of asset onboarding. An alert that arrives in a shared
+    inbox belongs to nobody.
+  </p>
+
+  <div class="callout">
+    <p><strong>The lesson generalises.</strong> The hard part of anomaly detection is not detecting anomalies. It is
+    producing a volume of alerts that a human being will keep reading in month six. Precision at a tolerable
+    alert rate is the only metric that predicts whether the system survives.</p>
+  </div>
+
+  <h2>Operating it</h2>
+
+  <ul>
+    <li><strong>Monitor the pipeline as hard as the equipment.</strong> Silent ingestion failure is the worst outcome —
+      no alerts looks identical to everything being fine. We alert on the <em>absence</em> of expected batches.</li>
+    <li><strong>Drift detection on inputs.</strong> A sensor that has been recalibrated shifts the feature distribution,
+      and the model will faithfully report an anomaly that is an instrumentation change.</li>
+    <li><strong>Every alert gets an outcome label.</strong> Confirmed fault, known operating condition, sensor problem,
+      unexplained. Without that feedback loop you have no path to improving precision, and precision is the
+      whole game.</li>
+    <li><strong>Retrain on a schedule and on drift</strong>, with the same evaluation gate on both paths.</li>
+  </ul>
+
+  <h2>What I would do differently</h2>
+
+  <ol>
+    <li><strong>Build the feedback loop first.</strong> We added outcome labelling months in, and lost months of
+      training signal that we could not recover.</li>
+    <li><strong>Onboard fewer assets, better.</strong> Breadth early created a maintenance burden that slowed the
+      modelling work. Depth on a handful of machines would have taught us more, faster.</li>
+    <li><strong>Involve reliability engineers in threshold setting from day one.</strong> They know which deviations
+      matter. We derived thresholds statistically and then spent weeks re-deriving them socially.</li>
+  </ol>
+
+  <hr>
+  <p class="small muted">
+    I build generative AI and ML systems for heavy industrial assets. Currently Lead AI/ML Engineer at
+    Siemens Energy, relocating to Germany.
+    <a href="mailto:abhishektyagi101@gmail.com">abhishektyagi101@gmail.com</a>
+  </p>
+  <p><a href="../writing.html">← All writing</a></p>
+</article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <div class="foot-brand">
+      <img class="ng-shield sm" src="../assets/img/angular.svg" alt="" width="22" height="22">
+      <span>&copy; <span id="yr">2026</span> Abhishek Tyagi</span>
+    </div>
+    <nav class="foot-nav">
+      <a href="../work.html">Work</a>
+      <a href="../writing.html">Writing</a>
+      <a href="../looking-for.html">Hiring me</a>
+      <a href="mailto:abhishektyagi101@gmail.com">Email</a>
+    </nav>
+    <p class="foot-note">Static site, hand-written HTML and CSS in an Angular Material style. Hosted on GitHub Pages.</p>
+  </div>
+</footer>
+<script src="../assets/js/main.js" defer></script>
+</body>
+</html>
